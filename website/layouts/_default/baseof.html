@@ -20,7 +20,7 @@
     <meta property="twitter:description" content="{{ .Site.Params.description }}">
     
     <!-- Favicon -->
-    <link rel="icon" type="image/svg+xml" href="/favicon.svg">
+    <link rel="icon" type="image/svg+xml" href="{{ "favicon.svg" | relURL }}">
     
     <!-- Phosphor Icons -->
     <script src="https://unpkg.com/@phosphor-icons/web"></script>
@@ -31,7 +31,7 @@
     <link href="https://fonts.googleapis.com/css2?family=Funnel+Display:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
     
     <!-- CSS -->
-    <link rel="stylesheet" href="/css/style.css">
+    <link rel="stylesheet" href="{{ "css/style.css" | relURL }}">
     
     <!-- Fonts -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -43,7 +43,7 @@
         <nav class="nav">
             <div class="nav-container">
                 <div class="nav-brand">
-                    <a href="/" class="brand-link">
+                    <a href="{{ "/" | relURL }}" class="brand-link">
                         <i class="ph-fill ph-microphone brand-icon"></i>
                     </a>
                 </div>
@@ -87,6 +87,6 @@
     </footer>
     
     <!-- JavaScript -->
-    <script src="/js/main.js"></script>
+    <script src="{{ "js/main.js" | relURL }}"></script>
 </body>
 </html>
