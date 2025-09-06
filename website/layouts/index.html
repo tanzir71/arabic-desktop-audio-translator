@@ -1,0 +1,157 @@
+{{ define "main" }}
+<div class="hero">
+    <div class="hero-container">
+        <div class="hero-content">
+            <h1 class="hero-title">Arabic Desktop Audio Transcriber & Translator</h1>
+            <p class="hero-subtitle">{{ .Site.Params.description }}</p>
+            <div class="hero-buttons">
+                <a href="https://github.com/tanzir71/arabic-desktop-audio-translator" class="btn btn-primary" target="_blank">View on GitHub</a>
+                <a href="#features" class="btn btn-secondary">Learn More</a>
+            </div>
+        </div>
+        <div class="hero-demo">
+            <div class="demo-window">
+                <div class="demo-header">
+                    <div class="demo-controls">
+                        <span class="demo-dot red"></span>
+                        <span class="demo-dot yellow"></span>
+                        <span class="demo-dot green"></span>
+                    </div>
+                    <span class="demo-title">Arabic Transcriber</span>
+                </div>
+                <div class="demo-content">
+                    <div class="demo-line">
+                        <span class="demo-prompt">🎤 Arabic:</span>
+                        <span class="demo-text arabic">مرحبا كيف حالك اليوم؟</span>
+                    </div>
+                    <div class="demo-line">
+                        <span class="demo-prompt">🔤 English:</span>
+                        <span class="demo-text">Hello, how are you today?</span>
+                    </div>
+                    <div class="demo-separator">─────────────────────────────</div>
+                    <div class="demo-line">
+                        <span class="demo-prompt">🎤 Arabic:</span>
+                        <span class="demo-text arabic">أهلا وسهلا بك</span>
+                    </div>
+                    <div class="demo-line">
+                        <span class="demo-prompt">🔤 English:</span>
+                        <span class="demo-text">Welcome</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<section id="features" class="features">
+    <div class="container">
+        <h2 class="section-title">Powerful Features</h2>
+        <div class="features-grid">
+            <div class="feature-card">
+                <i class="ph-fill ph-microphone feature-icon"></i>
+                <h3>Real-time Audio Capture</h3>
+                <p>Capture audio from any system device with smart device selection and persistent preferences.</p>
+                <ul>
+                    <li>Desktop audio capture</li>
+                    <li>Microphone input support</li>
+                    <li>Device switching with Ctrl+D</li>
+                </ul>
+            </div>
+            <div class="feature-card">
+                <i class="ph-fill ph-translate feature-icon"></i>
+                <h3>Advanced Speech Recognition</h3>
+                <p>High-accuracy Arabic speech recognition with support for various dialects.</p>
+                <ul>
+                    <li>Google Speech Recognition API</li>
+                    <li>Noise filtering</li>
+                    <li>Multiple Arabic dialects</li>
+                </ul>
+            </div>
+            <div class="feature-card">
+                <i class="ph-fill ph-globe feature-icon"></i>
+                <h3>Instant Translation</h3>
+                <p>Real-time Arabic to English translation powered by advanced transformer models.</p>
+                <ul>
+                    <li>Helsinki-NLP models</li>
+                    <li>Context-aware translations</li>
+                    <li>High translation quality</li>
+                </ul>
+            </div>
+            <div class="feature-card">
+                <i class="ph-fill ph-floppy-disk feature-icon"></i>
+                <h3>Session Management</h3>
+                <p>Automatic transcript saving with organized output and configuration persistence.</p>
+                <ul>
+                    <li>Timestamped transcripts</li>
+                    <li>Automatic file organization</li>
+                    <li>Session metadata</li>
+                </ul>
+            </div>
+            <div class="feature-card">
+                <i class="ph-fill ph-keyboard feature-icon"></i>
+                <h3>Keyboard Controls</h3>
+                <p>Convenient keyboard shortcuts for seamless operation during transcription.</p>
+                <ul>
+                    <li>Ctrl+D: Change device</li>
+                    <li>Ctrl+C: Stop transcription</li>
+                    <li>Enter: Quick device selection</li>
+                </ul>
+            </div>
+            <div class="feature-card">
+                <i class="ph-fill ph-wrench feature-icon"></i>
+                <h3>Easy Setup</h3>
+                <p>Simple installation process with comprehensive documentation and troubleshooting.</p>
+                <ul>
+                    <li>One-command installation</li>
+                    <li>Cross-platform support</li>
+                    <li>Detailed documentation</li>
+                </ul>
+            </div>
+        </div>
+    </div>
+</section>
+
+<section id="download" class="download">
+    <div class="container">
+        <h2 class="section-title">Get Started</h2>
+        <div class="download-content">
+            <div class="download-info">
+                <h3>Quick Installation</h3>
+                <div class="code-block">
+                    <div class="code-header">
+                        <span>Terminal</span>
+                        <button class="copy-btn" onclick="copyCode('install-code')">Copy</button>
+                    </div>
+                    <pre id="install-code"><code># Clone or download the repository
+git clone https://github.com/yourusername/arabic-transcriber.git
+cd arabic-transcriber
+
+# Install dependencies
+pip install -r requirements.txt
+
+# Run the application
+python main.py</code></pre>
+                </div>
+            </div>
+            <div class="download-requirements">
+                <h3>System Requirements</h3>
+                <ul class="requirements-list">
+                    <li><strong>Python:</strong> 3.8 or higher</li>
+                    <li><strong>OS:</strong> Windows, macOS, Linux</li>
+                    <li><strong>RAM:</strong> 4GB minimum (8GB recommended)</li>
+                    <li><strong>Storage:</strong> 2GB free space for models</li>
+                    <li><strong>Internet:</strong> Required for first-time setup</li>
+                </ul>
+            </div>
+        </div>
+        <div class="download-buttons">
+            <a href="https://github.com/tanzir71/arabic-desktop-audio-translator" class="btn btn-primary btn-large" target="_blank">
+                <i class="ph-fill ph-github-logo btn-icon"></i>
+                View on GitHub
+            </a>
+        </div>
+    </div>
+</section>
+
+
+{{ end }}

@@ -1,0 +1,27 @@
+baseURL = 'https://arabic-transcriber.github.io'
+languageCode = 'en-us'
+title = 'Arabic Desktop Audio Transcriber & Translator'
+
+[params]
+  description = 'A powerful desktop application for real-time Arabic audio transcription and translation that works completely offline.'
+  author = 'Arabic Transcriber Team'
+  version = '1.0.0'
+
+[markup]
+  [markup.goldmark]
+    [markup.goldmark.renderer]
+      unsafe = true
+
+[menu]
+  [[menu.main]]
+    name = 'Home'
+    url = '/'
+    weight = 10
+  [[menu.main]]
+    name = 'Features'
+    url = '#features'
+    weight = 20
+  [[menu.main]]
+    name = 'Download'
+    url = '#download'
+    weight = 30
