@@ -1,0 +1,35 @@
+# Arabic Audio Transcriber Requirements
+# Install with: pip install -r requirements.txt
+
+# macOS Users: Make sure to install Xcode Command Line Tools first:
+# xcode-select --install
+
+# Core audio processing
+PyAudio>=0.2.14
+numpy>=1.21.0
+
+# Speech recognition
+SpeechRecognition>=3.10.0
+
+# Machine learning and translation
+transformers>=4.21.0
+torch>=1.12.0
+sentencepiece>=0.1.97
+protobuf>=3.20.0
+
+# Keyboard shortcuts
+keyboard>=0.13.5
+
+# Configuration management (built-in)
+# configparser is included in Python standard library
+
+# macOS-specific notes:
+# - For desktop audio capture, consider installing BlackHole:
+#   https://github.com/ExistentialAudio/BlackHole
+# - Grant microphone and screen recording permissions in System Preferences
+# - If you encounter issues with torch, try: pip install torch --index-url https://download.pytorch.org/whl/cpu
+# configparser - included in Python standard library
+
+# Additional dependencies that may be needed
+# pyaudio>=0.2.11  # Alternative audio backend (optional)
+# tensorflow>=2.9.0  # Alternative ML backend (optional)
