@@ -4,14 +4,9 @@ Arabic Desktop Audio Transcriber and Translator
 Captures desktop audio, transcribes Arabic speech, and translates to English
 """
 
-import pyaudio
-import numpy as np
-import speech_recognition as sr
-from transformers import pipeline
-import threading
-import queue
-import time
 import warnings
+warnings.filterwarnings("ignore")
+warnings.filterwarnings("ignore", message=r"`return_token_timestamps` is deprecated.*", category=FutureWarning)
 import sys
 import json
 from datetime import datetime
@@ -21,9 +16,15 @@ import keyboard
 import configparser
 import platform
 import signal
-
-# Suppress warnings
-warnings.filterwarnings("ignore")
+import socket
+import torch
+import pyaudio
+import numpy as np
+import speech_recognition as sr
+from transformers import pipeline
+import threading
+import queue
+import time
 
 # Configuration file path
 CONFIG_FILE = "config.ini"
@@ -77,22 +78,76 @@ class ArabicAudioTranscriber:
         
         # Keyboard shortcut flag
         self.device_change_requested = False
+
+        self.asr_backend = os.environ.get("ASR_BACKEND", "google").strip().lower()
+        self.asr_fallback = os.environ.get("ASR_FALLBACK", "whisper").strip().lower()
+        if self.asr_fallback in ("", "none", "null", "0"):
+            self.asr_fallback = None
+        self.offline_only = os.environ.get("OFFLINE_ONLY", "0").strip() == "1"
+
+        self.torch_device = 0 if torch.cuda.is_available() else -1
+        self.torch_dtype = torch.float16 if self.torch_device == 0 else None
+        if self.torch_device == 0:
+            print("✅ GPU detected (CUDA). Using GPU acceleration.")
+        else:
+            print("⚠️ CUDA not available. Using CPU.")
         
         # PyAudio setup
         self.pyaudio_instance = pyaudio.PyAudio()
         self.stream = None
         
-        # Initialize speech recognizer
+        # Initialize speech recognizer (Google web API)
         self.recognizer = sr.Recognizer()
         self.recognizer.energy_threshold = 300
         self.recognizer.dynamic_energy_threshold = True
+        self.speech_api_timeout_s = 12
+        socket.setdefaulttimeout(self.speech_api_timeout_s)
+
+        # Initialize offline ASR (Whisper via transformers)
+        self.asr = None
+        needs_whisper = self.asr_backend == "whisper" or self.asr_fallback == "whisper"
+        if needs_whisper:
+            whisper_model = os.environ.get("WHISPER_MODEL", "openai/whisper-small").strip()
+            print("Loading offline ASR model (Whisper)...")
+            if self.offline_only:
+                os.environ.setdefault("HF_HUB_OFFLINE", "1")
+                os.environ.setdefault("TRANSFORMERS_OFFLINE", "1")
+            try:
+                asr_kwargs = {
+                    "model": whisper_model,
+                    "device": self.torch_device,
+                }
+                if self.torch_dtype is not None:
+                    asr_kwargs["torch_dtype"] = self.torch_dtype
+                try:
+                    self.asr = pipeline("automatic-speech-recognition", **asr_kwargs)
+                except TypeError:
+                    asr_kwargs.pop("torch_dtype", None)
+                    self.asr = pipeline("automatic-speech-recognition", **asr_kwargs)
+                try:
+                    self.asr.feature_extractor.return_attention_mask = True
+                except Exception:
+                    pass
+                print("✅ Offline ASR ready.")
+            except Exception as e:
+                print(f"❌ Failed to initialize offline ASR: {e}")
+                if self.offline_only:
+                    print("💡 Offline-only is enabled. Set OFFLINE_ONLY=0 once to allow the model to download, then rerun.")
+                else:
+                    print("💡 Offline ASR unavailable. Set ASR_FALLBACK=none to silence fallback attempts.")
+                self.asr = None
+                if self.asr_backend == "whisper":
+                    print("💡 Falling back to Google speech recognition for now (set ASR_BACKEND=google to force).")
+                    self.asr_backend = "google"
+                if self.asr_fallback == "whisper":
+                    self.asr_fallback = None
         
         # Initialize translation pipeline (Helsinki-NLP)
         print("Loading translation model (this may take a moment on first run)...")
         self.translator = pipeline(
             "translation", 
             model="Helsinki-NLP/opus-mt-ar-en",
-            device=-1  # Use CPU (-1) or GPU (0) if available
+            device=self.torch_device
         )
         
         # Audio settings
@@ -104,6 +159,80 @@ class ArabicAudioTranscriber:
         self.running = False
         
         print("Initialization complete!\n")
+
+    def recognize_arabic(self, audio):
+        result_queue = queue.Queue(maxsize=1)
+
+        def do_recognize():
+            try:
+                text = self.recognizer.recognize_google(
+                    audio,
+                    language="ar-AR",
+                    show_all=False,
+                )
+                result_queue.put(("ok", text))
+            except Exception as e:
+                result_queue.put(("err", e))
+
+        t = threading.Thread(target=do_recognize, daemon=True)
+        t.start()
+        try:
+            status, payload = result_queue.get(timeout=self.speech_api_timeout_s + 1)
+        except queue.Empty:
+            raise TimeoutError(f"Speech recognition timed out after ~{self.speech_api_timeout_s}s")
+
+        if status == "ok":
+            return payload
+        raise payload
+
+    def recognize_arabic_google_cloud(self, audio):
+        credentials_json = os.environ.get("GOOGLE_CLOUD_CREDENTIALS_JSON", "").strip()
+        if not credentials_json:
+            creds_path = os.environ.get("GOOGLE_APPLICATION_CREDENTIALS", "").strip()
+            if creds_path:
+                with open(creds_path, "r", encoding="utf-8") as f:
+                    credentials_json = f.read()
+        if not credentials_json:
+            raise RuntimeError(
+                "Google Cloud credentials not set. Set GOOGLE_APPLICATION_CREDENTIALS to a service-account JSON path "
+                "or set GOOGLE_CLOUD_CREDENTIALS_JSON to the JSON contents."
+            )
+
+        result_queue = queue.Queue(maxsize=1)
+
+        def do_recognize():
+            try:
+                text = self.recognizer.recognize_google_cloud(
+                    audio,
+                    credentials_json=credentials_json,
+                    language="ar-AR",
+                    show_all=False,
+                )
+                result_queue.put(("ok", text))
+            except Exception as e:
+                result_queue.put(("err", e))
+
+        t = threading.Thread(target=do_recognize, daemon=True)
+        t.start()
+        try:
+            status, payload = result_queue.get(timeout=self.speech_api_timeout_s + 1)
+        except queue.Empty:
+            raise TimeoutError(f"Speech recognition timed out after ~{self.speech_api_timeout_s}s")
+
+        if status == "ok":
+            return payload
+        raise payload
+
+    def recognize_arabic_offline(self, audio_array):
+        if not self.asr:
+            raise RuntimeError("Offline ASR is not initialized")
+        result = self.asr(
+            {"array": audio_array.astype(np.float32), "sampling_rate": self.sample_rate},
+            generate_kwargs={"task": "transcribe", "language": "ar"},
+            return_timestamps=False,
+        )
+        text = (result or {}).get("text", "")
+        return text.strip()
     
     def capture_audio(self):
         """Capture audio from the selected device using PyAudio"""
@@ -171,22 +300,27 @@ class ArabicAudioTranscriber:
                 # Get audio chunk from queue (timeout prevents hanging)
                 audio_data = self.audio_queue.get(timeout=1)
                 
-                # Convert numpy array to AudioData for speech_recognition
-                audio_data_int16 = (audio_data * 32767).astype(np.int16)
-                audio = sr.AudioData(
-                    audio_data_int16.tobytes(),
-                    self.sample_rate,
-                    2  # Sample width in bytes
-                )
-                
                 try:
                     # Transcribe Arabic audio
                     print("Listening...", end="\r")
-                    arabic_text = self.recognizer.recognize_google(
-                        audio, 
-                        language="ar-AR",  # Arabic
-                        show_all=False
+                    audio_data_int16 = (audio_data * 32767).astype(np.int16)
+                    audio = sr.AudioData(
+                        audio_data_int16.tobytes(),
+                        self.sample_rate,
+                        2,
                     )
+                    primary_backend = self.asr_backend
+                    if primary_backend == "google_web":
+                        primary_backend = "google"
+
+                    if primary_backend == "whisper":
+                        arabic_text = self.recognize_arabic_offline(audio_data)
+                    elif primary_backend == "google":
+                        arabic_text = self.recognize_arabic(audio)
+                    elif primary_backend == "google_cloud":
+                        arabic_text = self.recognize_arabic_google_cloud(audio)
+                    else:
+                        raise RuntimeError(f"Unknown ASR_BACKEND: {self.asr_backend}")
                     
                     if arabic_text:
                         print(f"\n🎤 Arabic: {arabic_text}")
@@ -214,6 +348,42 @@ class ArabicAudioTranscriber:
                     pass
                 except sr.RequestError as e:
                     print(f"\nError with speech recognition service: {e}")
+                except TimeoutError as e:
+                    print(f"\nError with speech recognition service: {e}")
+                except Exception as e:
+                    if self.asr_backend == "whisper":
+                        hint = ""
+                        if self.offline_only:
+                            hint = " (set OFFLINE_ONLY=0 to allow first-time model download)"
+                        print(f"\nOffline ASR error: {e}{hint}")
+                    else:
+                        if self.asr_fallback == "whisper" and self.asr:
+                            try:
+                                arabic_text = self.recognize_arabic_offline(audio_data)
+                            except Exception as fallback_error:
+                                print(f"\nError with speech recognition service: {e}")
+                                print(f"\nOffline ASR error: {fallback_error}")
+                                arabic_text = ""
+                        else:
+                            print(f"\nError with speech recognition service: {e}")
+                            arabic_text = ""
+                        if arabic_text:
+                            print(f"\n🎤 Arabic: {arabic_text}")
+                            translation = self.translator(
+                                arabic_text,
+                                max_length=512,
+                                truncation=True
+                            )
+                            english_text = translation[0]['translation_text']
+                            print(f"🔤 English: {english_text}")
+                            print("-" * 50)
+                            transcript_entry = {
+                                'timestamp': datetime.now().isoformat(),
+                                'arabic_text': arabic_text,
+                                'english_text': english_text
+                            }
+                            self.transcripts.append(transcript_entry)
+                        continue
                 
             except queue.Empty:
                 continue

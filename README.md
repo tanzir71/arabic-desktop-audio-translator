@@ -1,6 +1,6 @@
-# Arabic Audio Transcriber & Translator
+# Desktop Audio Translator
 
-A real-time Arabic audio transcription and translation tool that captures desktop audio or microphone input, transcribes Arabic speech, and translates it to English.
+A real-time desktop audio transcription and translation tool. Captures desktop audio or microphone input, transcribes speech locally using Whisper, and translates using Helsinki-NLP models. Includes both a GUI and a CLI.
 
 ## Features
 
@@ -11,14 +11,20 @@ A real-time Arabic audio transcription and translation tool that captures deskto
 - **Device Persistence**: Remembers your preferred audio device
 
 ### 🗣️ Speech Processing
-- **Real-time Transcription**: Live Arabic speech-to-text using Google Speech Recognition
-- **High-Quality Translation**: Arabic to English translation using Helsinki-NLP models
-- **Continuous Processing**: Processes audio in 3-second chunks for real-time results
+- **Offline ASR (Default)**: Whisper via Transformers (runs locally; downloads model once)
+- **Multi-language**: Select source and target language in the GUI
+- **High-Quality Translation**: Helsinki-NLP translation models (downloads once per language pair)
+- **Continuous Processing**: Processes audio in short chunks (configurable) for near real-time results
 
-### ⌨️ Keyboard Shortcuts
-- **Ctrl+D**: Change audio device during transcription
-- **Ctrl+C**: Stop transcription
-- **Dynamic Device Switching**: Change devices without losing your session
+### 🖥️ Simple GUI (Recommended)
+- **Start/Stop** controls
+- **Device picker** with refresh
+- **Language selection** (speech source + translation target)
+- **Download models** button for the selected languages (then run offline)
+
+### ⌨️ CLI Keyboard Shortcuts
+- **Ctrl+D**: Change audio device during transcription (CLI mode)
+- **Ctrl+C**: Stop transcription (CLI mode)
 
 ### 💾 Session Management
 - **Auto-save Transcripts**: Automatically saves all transcriptions when program closes
@@ -29,9 +35,10 @@ A real-time Arabic audio transcription and translation tool that captures deskto
 ## Installation
 
 ### Prerequisites
-- Python 3.7 or higher
-- Windows operating system (for current audio capture implementation)
-- Internet connection (for speech recognition and first-time model download)
+- Python 3.8 or higher
+- Windows operating system (desktop audio capture via loopback devices)
+- Internet connection only for first-time model downloads (Whisper + translation models)
+- Tkinter (for the GUI; included with most Python installations)
 
 ### Step 1: Clone or Download
 ```bash
@@ -44,27 +51,89 @@ A real-time Arabic audio transcription and translation tool that captures deskto
 pip install -r requirements.txt
 ```
 
+### Optional: Enable NVIDIA GPU (CUDA) for Faster Whisper/Translation
+If you see `CUDA not available (CPU-only torch build)`, you installed a CPU-only build of PyTorch.
+
+```bash
+pip uninstall -y torch torchvision torchaudio
+pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu128
+```
+
 ### Step 3: First Run
 ```bash
-python main.py
+python gui.py
 ```
 
 ## Usage
 
-### Initial Setup
-1. Run the program: `python main.py`
-2. Select your audio device from the interactive menu:
-   - **For desktop audio**: Choose a loopback device
-   - **For microphone**: Choose a microphone device
-3. Your selection is automatically saved as the default
+### GUI (Recommended)
+1. Run: `python gui.py`
+2. Select audio device
+3. Choose speech source language + translation target language
+4. (Optional) Click **Download models** to cache them for offline use
+5. Click **Start**
 
-### Daily Usage
-1. Run the program: `python main.py`
-2. Press **Enter** to use your saved default device, or select a different one
-3. The program will start transcribing and translating in real-time
-4. Use keyboard shortcuts as needed:
+### CLI
+1. Run: `python main.py`
+2. Select your audio device from the interactive menu (or press Enter to use the saved device)
+3. Use:
    - **Ctrl+D**: Change device
    - **Ctrl+C**: Stop and save transcripts
+
+### Offline Mode
+After models are downloaded once, you can prevent any network access:
+```powershell
+$env:OFFLINE_ONLY="1"
+python main.py
+```
+
+### Language Selection
+The GUI supports selecting source/target languages directly.
+
+For CLI, set:
+- `ASR_LANGUAGE` to control recognition locale (e.g. `ar-AR`, `en-US`)
+- `TRANSLATION_MODEL` to select the translation model (e.g. `Helsinki-NLP/opus-mt-en-ar`)
+
+Example:
+```powershell
+$env:ASR_LANGUAGE="ar-SA"
+python main.py
+```
+
+### Whisper Model Selection (Offline)
+Whisper speed/accuracy depends on model size. On CPU, prefer smaller models:
+
+```powershell
+$env:WHISPER_MODEL="openai/whisper-tiny"
+python main.py
+```
+
+Common choices:
+- `openai/whisper-tiny` (fastest)
+- `openai/whisper-base`
+- `openai/whisper-small` (default)
+
+### Tuning Chunk Duration
+If Whisper feels slow or “lags” behind, increase chunk duration:
+```powershell
+$env:CHUNK_DURATION="8"
+python main.py
+```
+
+### Fixing Loopback + Whisper (Sample Rate)
+Some Windows loopback devices work best when captured at 48kHz. The app will resample to 16kHz internally for ASR.
+
+```powershell
+$env:CAPTURE_SAMPLE_RATE="48000"
+python main.py
+```
+
+### Audio Debugging
+To print basic audio levels (peak/rms) periodically:
+```powershell
+$env:AUDIO_DEBUG="1"
+python main.py
+```
 
 ### Device Management
 - **First time**: Select and confirm your preferred device
@@ -108,17 +177,25 @@ Total Entries: 5
 ## Configuration
 
 ### Config File
-Device preferences are stored in `config.ini`:
+Device and language preferences are stored in `config.ini`:
 ```ini
 [DEVICE]
 name = Your Selected Device Name
+
+[LANGUAGE]
+source = ar
+target = en
+whisper_model = openai/whisper-small
 ```
 
 ### Customization
-You can modify these settings in the code:
-- `chunk_duration`: Audio processing interval (default: 3 seconds)
-- `sample_rate`: Audio sample rate (default: 16kHz)
-- `energy_threshold`: Voice detection sensitivity (default: 300)
+Runtime settings are primarily controlled via environment variables:
+- `OFFLINE_ONLY`: `1` to prevent downloads (use after models are cached)
+- `WHISPER_MODEL`: e.g. `openai/whisper-tiny`
+- `ASR_LANGUAGE`: e.g. `ar-AR`, `ar-SA`
+- `TRANSLATION_MODEL`: e.g. `Helsinki-NLP/opus-mt-ar-en`
+- `CHUNK_DURATION`: seconds per audio chunk
+- `AUDIO_DEBUG`: `1` to print audio level diagnostics
 
 ## Troubleshooting
 
@@ -130,9 +207,14 @@ You can modify these settings in the code:
 - Check Windows audio settings
 
 **"Speech recognition error"**
-- Check your internet connection
-- Ensure the audio is clear and in Arabic
-- Try adjusting the microphone volume
+- If running offline-only, disable it for the first run so models can download: `set OFFLINE_ONLY=0`
+- In the GUI, use **Download models** for your language pair
+
+**Stuck on \"Listening...\"**
+- If you selected a loopback device, make sure audio is actually playing through that output
+- If you selected a microphone, ensure Windows microphone permission is enabled (Settings → Privacy & security → Microphone)
+- Enable audio debug: `set AUDIO_DEBUG=1`
+- For offline Whisper on CPU, expect slower processing; try `set WHISPER_MODEL=openai/whisper-tiny` and/or `set CHUNK_DURATION=8`
 
 **"Translation model loading slowly"**
 - First-time model download can take several minutes
@@ -161,10 +243,9 @@ You can modify these settings in the code:
 ### Dependencies
 - **soundcard**: Audio device access and recording
 - **numpy**: Audio data processing
-- **SpeechRecognition**: Google Speech Recognition API
-- **transformers**: Helsinki-NLP translation models
-- **torch**: Machine learning backend
-- **keyboard**: Global keyboard shortcuts
+- **transformers**: Whisper (offline ASR) and Helsinki-NLP translation models
+- **torch**: ML backend (CPU or CUDA)
+- **keyboard**: Global keyboard shortcuts (CLI)
 - **configparser**: Configuration file management
 
 ### Architecture
@@ -174,9 +255,8 @@ You can modify these settings in the code:
 - **Modular**: Clean separation of concerns
 
 ### Supported Languages
-- **Input**: Arabic (ar-AR)
-- **Output**: English (en)
-- **Translation Model**: Helsinki-NLP opus-mt-ar-en
+- **GUI**: Multiple languages (select source/target; downloads the matching Helsinki model)
+- **CLI**: Configure via `ASR_LANGUAGE` + `TRANSLATION_MODEL`
 
 ## License
 

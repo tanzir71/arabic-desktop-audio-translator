@@ -1,13 +1,13 @@
 ---
-title: "Arabic Audio Transcriber & Translator"
+title: "Desktop Audio Translator"
 date: 2024-01-15
 draft: false
 layout: "home"
 ---
 
-# Real-time Arabic Audio Transcription & Translation
+# Real-time Desktop Audio Transcription & Translation
 
-A powerful Python application that captures audio from your system, transcribes Arabic speech in real-time, and provides instant English translations.
+A Python application that captures audio from your system, transcribes speech locally with Whisper, and translates into your chosen target language. Includes a simple GUI for selecting languages and downloading models.
 
 <div class="hero-buttons">
     <a href="https://github.com/tanzir71/arabic-desktop-audio-translator" class="btn btn-primary" target="_blank">View on GitHub</a>
@@ -19,16 +19,16 @@ A powerful Python application that captures audio from your system, transcribes 
 ### 🎤 Real-time Audio Capture
 - Capture audio from any system device (speakers, microphones)
 - Smart device selection with persistent preferences
-- Keyboard shortcuts for quick device switching (Ctrl+D)
+- Keyboard shortcuts for quick device switching (CLI mode)
 
 ### 🗣️ Advanced Speech Recognition
-- Specialized Arabic speech recognition using Whisper models
-- High accuracy transcription with noise filtering
-- Support for various Arabic dialects
+- Offline speech recognition using Whisper models
+- Runs locally after the first model download
+- GPU acceleration supported via CUDA-enabled PyTorch
 
 ### 🌐 Instant Translation
-- Real-time Arabic to English translation
-- Powered by advanced transformer models
+- Translate from a selectable source language to a selectable target language
+- Powered by Helsinki-NLP transformer models
 - Context-aware translations for better accuracy
 
 ### 💾 Session Management
@@ -41,6 +41,11 @@ A powerful Python application that captures audio from your system, transcribes 
 - **Ctrl+C**: Stop transcription gracefully
 - **Enter**: Quick device selection on startup
 
+### 🖥️ GUI Mode
+- Choose device + languages
+- Download models for your language pair
+- Start/Stop with live transcript view
+
 ## Quick Start
 
 1. **Install Dependencies**
@@ -48,9 +53,9 @@ A powerful Python application that captures audio from your system, transcribes 
    pip install -r requirements.txt
    ```
 
-2. **Run the Application**
+2. **Run the GUI**
    ```bash
-   python main.py
+   python gui.py
    ```
 
 3. **Select Audio Device**
@@ -58,7 +63,7 @@ A powerful Python application that captures audio from your system, transcribes 
    - Device preference is automatically saved
 
 4. **Start Transcribing**
-   - Speak in Arabic or play Arabic audio
+   - Speak or play audio in your selected source language
    - View real-time transcription and translation
    - Transcripts are automatically saved
 

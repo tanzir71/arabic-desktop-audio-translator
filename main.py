@@ -4,27 +4,83 @@ Arabic Desktop Audio Transcriber and Translator
 Captures desktop audio, transcribes Arabic speech, and translates to English
 """
 
-import soundcard as sc
-import numpy as np
-import speech_recognition as sr
-from transformers import pipeline
-import threading
-import queue
-import time
 import warnings
+warnings.filterwarnings("ignore")
+warnings.filterwarnings("ignore", message=r"`return_token_timestamps` is deprecated.*", category=FutureWarning)
 import sys
 import json
 from datetime import datetime
 import os
 import atexit
-import keyboard
 import configparser
+import threading
+import queue
+import time
 
-# Suppress warnings
-warnings.filterwarnings("ignore")
+missing_packages = []
+try:
+    import keyboard
+except Exception:
+    keyboard = None
+    missing_packages.append("keyboard")
+try:
+    import torch
+except Exception:
+    torch = None
+    missing_packages.append("torch")
+try:
+    import soundcard as sc
+except Exception:
+    sc = None
+    missing_packages.append("soundcard")
+else:
+    warnings.filterwarnings("ignore", category=sc.SoundcardRuntimeWarning)
+try:
+    import numpy as np
+except Exception:
+    np = None
+    missing_packages.append("numpy")
+try:
+    from transformers import pipeline
+except Exception:
+    pipeline = None
+    missing_packages.append("transformers")
 
 # Configuration file path
 CONFIG_FILE = "config.ini"
+
+def require_dependencies():
+    if missing_packages:
+        unique = []
+        for p in missing_packages:
+            if p not in unique:
+                unique.append(p)
+        print("\nMissing required Python packages:")
+        for p in unique:
+            print(f"  - {p}")
+        print("\nInstall dependencies:")
+        print("  pip install -r requirements.txt")
+        print("\nIf torch installs as CPU-only and you want GPU (CUDA):")
+        print("  pip uninstall -y torch torchvision torchaudio")
+        print("  pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu128")
+        sys.exit(1)
+
+    extra_missing = []
+    try:
+        import sentencepiece  # noqa: F401
+    except Exception:
+        extra_missing.append("sentencepiece")
+    try:
+        import google.protobuf  # noqa: F401
+    except Exception:
+        extra_missing.append("protobuf")
+
+    if extra_missing:
+        print("\nMissing optional-but-recommended packages (used by transformer models/tokenizers):")
+        for p in extra_missing:
+            print(f"  - {p}")
+        print("\nInstall:")
+        print(f"  pip install {' '.join(extra_missing)}")
 
 def load_device_config():
     """Load saved device configuration"""
@@ -52,12 +108,14 @@ def find_device_by_name(device_name):
     return None
 
 class ArabicAudioTranscriber:
-    def __init__(self, selected_device=None):
+    def __init__(self, selected_device=None, on_event=None, interactive=True, asr_language=None, translation_model=None):
         """Initialize the transcriber with audio capture and translation models"""
         print("\nInitializing Arabic Audio Transcriber...")
         
         # Store selected device
         self.selected_device = selected_device
+        self.on_event = on_event
+        self.interactive = interactive
         
         # Initialize transcript storage
         self.transcripts = []
@@ -68,29 +126,126 @@ class ArabicAudioTranscriber:
         
         # Keyboard shortcut flag
         self.device_change_requested = False
-        
-        # Initialize speech recognizer
-        self.recognizer = sr.Recognizer()
-        self.recognizer.energy_threshold = 300
-        self.recognizer.dynamic_energy_threshold = True
+
+        self.offline_only = os.environ.get("OFFLINE_ONLY", "0").strip() == "1"
+        self.asr_language = (asr_language or os.environ.get("ASR_LANGUAGE", "ar-AR")).strip() or "ar-AR"
+        self.whisper_language = (self.asr_language.split("-")[0].strip().lower() or "ar")
+        self.audio_debug = os.environ.get("AUDIO_DEBUG", "0").strip() == "1"
+        try:
+            capture_sr_env = int(os.environ.get("CAPTURE_SAMPLE_RATE", "0").strip() or "0")
+        except Exception:
+            capture_sr_env = 0
+        if capture_sr_env > 0:
+            self.capture_sample_rate = capture_sr_env
+        else:
+            is_loopback = bool(getattr(self.selected_device, "isloopback", False))
+            self.capture_sample_rate = 48000 if is_loopback else 16000
+
+        self.torch_device = 0 if (torch and torch.cuda.is_available()) else -1
+        self.torch_dtype = torch.float16 if self.torch_device == 0 else None
+        if self.torch_device == 0:
+            print("✅ GPU detected (CUDA). Using GPU acceleration.")
+        else:
+            if torch and "+cpu" in getattr(torch, "__version__", ""):
+                print("⚠️ CUDA not available (CPU-only torch build). Using CPU.")
+            else:
+                print("⚠️ CUDA not available. Using CPU.")
+
+        # Initialize offline ASR (Whisper via transformers)
+        self.asr = None
+        whisper_model = os.environ.get("WHISPER_MODEL", "openai/whisper-small").strip()
+        print("Loading offline ASR model (Whisper)...")
+        if self.offline_only:
+            os.environ.setdefault("HF_HUB_OFFLINE", "1")
+            os.environ.setdefault("TRANSFORMERS_OFFLINE", "1")
+        try:
+            asr_kwargs = {
+                "model": whisper_model,
+                "device": self.torch_device,
+            }
+            if self.torch_dtype is not None:
+                asr_kwargs["torch_dtype"] = self.torch_dtype
+            try:
+                self.asr = pipeline("automatic-speech-recognition", **asr_kwargs)
+            except TypeError:
+                asr_kwargs.pop("torch_dtype", None)
+                self.asr = pipeline("automatic-speech-recognition", **asr_kwargs)
+            try:
+                self.asr.feature_extractor.return_attention_mask = True
+            except Exception:
+                pass
+            print("✅ Offline ASR ready.")
+        except Exception as e:
+            print(f"❌ Failed to initialize offline ASR: {e}")
+            if self.offline_only:
+                print("💡 Offline-only is enabled. Set OFFLINE_ONLY=0 once to allow the model to download, then rerun.")
+            raise
         
         # Initialize translation pipeline (Helsinki-NLP)
         print("Loading translation model (this may take a moment on first run)...")
+        translation_model_name = (translation_model or os.environ.get("TRANSLATION_MODEL", "Helsinki-NLP/opus-mt-ar-en")).strip()
         self.translator = pipeline(
             "translation", 
-            model="Helsinki-NLP/opus-mt-ar-en",
-            device=-1  # Use CPU (-1) or GPU (0) if available
+            model=translation_model_name,
+            device=self.torch_device
         )
         
         # Audio settings
         self.sample_rate = 16000  # 16kHz for speech recognition
-        self.chunk_duration = 3  # Process audio in 3-second chunks
+        default_chunk = 6
+        try:
+            self.chunk_duration = float(os.environ.get("CHUNK_DURATION", str(default_chunk)).strip())
+        except Exception:
+            self.chunk_duration = float(default_chunk)
         
         # Threading components
         self.audio_queue = queue.Queue()
         self.running = False
+        self._silence_run = 0
+        self._last_audio_hint_time = 0.0
+        self._debug_counter = 0
         
         print("Initialization complete!\n")
+
+    def resample_audio(self, audio_array, original_sample_rate, target_sample_rate):
+        if original_sample_rate == target_sample_rate:
+            return audio_array.astype(np.float32, copy=False)
+        if audio_array is None or audio_array.size == 0:
+            return np.asarray([], dtype=np.float32)
+        duration_s = float(audio_array.shape[0]) / float(original_sample_rate)
+        target_len = int(round(duration_s * float(target_sample_rate)))
+        if target_len <= 1:
+            return np.asarray([], dtype=np.float32)
+        x = audio_array.astype(np.float32, copy=False)
+        original_positions = np.arange(x.shape[0], dtype=np.float64)
+        target_positions = np.linspace(0, x.shape[0] - 1, num=target_len, dtype=np.float64)
+        y = np.interp(target_positions, original_positions, x).astype(np.float32)
+        return y
+
+    def emit(self, event_type, payload=None):
+        if callable(self.on_event):
+            try:
+                self.on_event(event_type, payload)
+            except Exception:
+                pass
+
+    def recognize_arabic_offline(self, audio_array):
+        if not self.asr:
+            raise RuntimeError("Offline ASR is not initialized")
+        result = self.asr(
+            {"array": audio_array.astype(np.float32), "sampling_rate": self.sample_rate},
+            generate_kwargs={"task": "transcribe", "language": (self.whisper_language or "ar")},
+            return_timestamps=False,
+        )
+        if isinstance(result, str):
+            return result.strip()
+        if isinstance(result, dict):
+            text = result.get("text", "")
+            return (text or "").strip()
+        try:
+            return str(result).strip()
+        except Exception:
+            return ""
     
     def capture_audio(self):
         """Continuously capture audio from selected device and add to queue"""
@@ -99,14 +254,16 @@ class ArabicAudioTranscriber:
                 raise RuntimeError("No audio device selected")
             
             print(f"Capturing audio from: {self.selected_device.name}")
+            if getattr(self.selected_device, "isloopback", False):
+                print(f"Loopback capture sample rate: {self.capture_sample_rate} Hz (ASR runs at {self.sample_rate} Hz)")
             print("Press Ctrl+C to stop\n")
             print("-" * 50)
             
             # Open recorder for the selected device
-            with self.selected_device.recorder(samplerate=self.sample_rate) as mic:
+            with self.selected_device.recorder(samplerate=self.capture_sample_rate) as mic:
                 while self.running:
                     # Capture audio chunk
-                    chunk_size = int(self.sample_rate * self.chunk_duration)
+                    chunk_size = int(self.capture_sample_rate * self.chunk_duration)
                     audio_data = mic.record(numframes=chunk_size)
                     
                     # Convert stereo to mono if necessary
@@ -114,7 +271,7 @@ class ArabicAudioTranscriber:
                         audio_data = np.mean(audio_data, axis=1)
                     
                     # Add to queue for processing
-                    self.audio_queue.put(audio_data)
+                    self.audio_queue.put((audio_data, self.capture_sample_rate))
                     
         except Exception as e:
             print(f"\nError capturing audio: {e}")
@@ -125,35 +282,66 @@ class ArabicAudioTranscriber:
         while self.running or not self.audio_queue.empty():
             try:
                 # Get audio chunk from queue (timeout prevents hanging)
-                audio_data = self.audio_queue.get(timeout=1)
-                
-                # Convert numpy array to AudioData for speech_recognition
-                audio_data_int16 = (audio_data * 32767).astype(np.int16)
-                audio = sr.AudioData(
-                    audio_data_int16.tobytes(),
-                    self.sample_rate,
-                    2  # Sample width in bytes
-                )
+                item = self.audio_queue.get(timeout=1)
+                if isinstance(item, tuple) and len(item) == 2:
+                    audio_data, capture_sr = item
+                else:
+                    audio_data, capture_sr = item, self.sample_rate
+                if capture_sr != self.sample_rate:
+                    audio_data = self.resample_audio(audio_data, capture_sr, self.sample_rate)
                 
                 try:
                     # Transcribe Arabic audio
                     print("Listening...", end="\r")
-                    arabic_text = self.recognizer.recognize_google(
-                        audio, 
-                        language="ar-AR",  # Arabic
-                        show_all=False
-                    )
+                    peak = float(np.max(np.abs(audio_data))) if audio_data.size else 0.0
+                    rms = float(np.sqrt(np.mean(np.square(audio_data)))) if audio_data.size else 0.0
+
+                    if self.audio_debug:
+                        self._debug_counter += 1
+                        if self._debug_counter % 10 == 0:
+                            print(f"\nAudio level: peak={peak:.6f} rms={rms:.6f}")
+
+                    if peak < 0.000001 and rms < 0.0000005:
+                        self._silence_run += 1
+                        if self._silence_run >= 5 and (time.time() - self._last_audio_hint_time) > 10:
+                            device_name = getattr(self.selected_device, "name", "<unknown>")
+                            loopback_hint = ""
+                            if getattr(self.selected_device, "isloopback", False):
+                                loopback_hint = " If this is a loopback device, ensure audio is playing through that output and try CAPTURE_SAMPLE_RATE=48000."
+                            print(
+                                f"\nNo audio detected from '{device_name}'. "
+                                f"Select the correct device and ensure Windows microphone permission is enabled.{loopback_hint}"
+                            )
+                            self._last_audio_hint_time = time.time()
+                        continue
+
+                    self._silence_run = 0
+
+                    if peak > 0 and peak < 0.05:
+                        gain = min(200.0, 0.9 / peak)
+                        audio_data = audio_data * gain
+                    started = time.time()
+                    print("Transcribing (offline Whisper)...", end="\r")
+                    self.emit("status", "transcribing")
+                    arabic_text = self.recognize_arabic_offline(audio_data)
+
+                    elapsed = time.time() - started
+                    if elapsed > 2.0 and self.audio_debug:
+                        print(f"\nASR time: {elapsed:.1f}s")
                     
                     if arabic_text:
+                        self.emit("arabic", arabic_text)
                         print(f"\n🎤 Arabic: {arabic_text}")
                         
                         # Translate to English
+                        self.emit("status", "translating")
                         translation = self.translator(
                             arabic_text,
                             max_length=512,
                             truncation=True
                         )
                         english_text = translation[0]['translation_text']
+                        self.emit("english", english_text)
                         print(f"🔤 English: {english_text}")
                         print("-" * 50)
                         
@@ -164,33 +352,51 @@ class ArabicAudioTranscriber:
                             'english_text': english_text
                         }
                         self.transcripts.append(transcript_entry)
+                        self.emit("transcript", transcript_entry)
                     
-                except sr.UnknownValueError:
-                    # No speech detected in this chunk
-                    pass
-                except sr.RequestError as e:
-                    print(f"\nError with speech recognition service: {e}")
+                except Exception as e:
+                    hint = ""
+                    if self.offline_only:
+                        hint = " (set OFFLINE_ONLY=0 to allow first-time model download)"
+                    self.emit("error", f"{e}{hint}")
+                    print(f"\nOffline ASR error: {e}{hint}")
+                    continue
                 
             except queue.Empty:
                 continue
             except Exception as e:
                 print(f"\nError processing audio: {e}")
+
+    def start_background(self, enable_keyboard_shortcuts=False):
+        if self.running:
+            return
+        self.running = True
+        if enable_keyboard_shortcuts and self.interactive:
+            self.setup_keyboard_shortcuts()
+        self._capture_thread = threading.Thread(target=self.capture_audio, daemon=True)
+        self._process_thread = threading.Thread(target=self.process_audio, daemon=True)
+        self._capture_thread.start()
+        self._process_thread.start()
+
+    def stop_background(self):
+        self.running = False
+
+    def join_background(self, timeout_capture=2, timeout_process=5):
+        t1 = getattr(self, "_capture_thread", None)
+        t2 = getattr(self, "_process_thread", None)
+        if t1:
+            t1.join(timeout=timeout_capture)
+        if t2:
+            t2.join(timeout=timeout_process)
     
     def run(self):
         """Main run loop with threading for simultaneous capture and processing"""
         self.running = True
-        
-        # Setup keyboard shortcuts
-        self.setup_keyboard_shortcuts()
+        if self.interactive:
+            self.setup_keyboard_shortcuts()
         
         while True:
-            # Start audio capture thread
-            capture_thread = threading.Thread(target=self.capture_audio)
-            capture_thread.start()
-            
-            # Start audio processing thread
-            process_thread = threading.Thread(target=self.process_audio)
-            process_thread.start()
+            self.start_background(enable_keyboard_shortcuts=False)
             
             try:
                 # Keep main thread alive and check for device change requests
@@ -205,8 +411,7 @@ class ArabicAudioTranscriber:
                 self.running = False
             
             # Wait for threads to finish
-            capture_thread.join(timeout=2)
-            process_thread.join(timeout=5)
+            self.join_background(timeout_capture=2, timeout_process=5)
             
             # Handle device change request
             if self.device_change_requested:
@@ -236,6 +441,8 @@ class ArabicAudioTranscriber:
     
     def setup_keyboard_shortcuts(self):
         """Setup keyboard shortcuts for device selection"""
+        if not keyboard:
+            return
         def on_device_change():
             self.device_change_requested = True
             print("\n🔄 Device change requested. Press Ctrl+C to stop current session and change device.")
@@ -305,32 +512,6 @@ class ArabicAudioTranscriber:
             
         except Exception as e:
             print(f"\n❌ Error saving transcript: {e}")
-
-def check_dependencies():
-    """Check if required packages are installed"""
-    required_packages = {
-        'soundcard': 'soundcard',
-        'numpy': 'numpy',
-        'speech_recognition': 'SpeechRecognition',
-        'transformers': 'transformers',
-        'torch': 'torch',  # Required by transformers
-        'keyboard': 'keyboard'  # For keyboard shortcuts
-    }
-    
-    missing = []
-    for module, package in required_packages.items():
-        try:
-            __import__(module)
-        except ImportError:
-            missing.append(package)
-    
-    if missing:
-        print("Missing required packages. Please install them using:")
-        print(f"pip install {' '.join(missing)}")
-        print("\nFor transformers to work properly, you might also need:")
-        print("pip install sentencepiece protobuf")
-        return False
-    return True
 
 def select_audio_device(show_saved_device=True):
     """Interactive device selector"""
@@ -471,21 +652,16 @@ def select_audio_device(show_saved_device=True):
 def main():
     """Main entry point"""
     print("=" * 50)
-    print("Arabic Desktop Audio Transcriber & Translator")
+    print("Desktop Audio Translator")
     print("=" * 50)
     
-    # Check dependencies
-    if not check_dependencies():
-        sys.exit(1)
+    require_dependencies()
     
-    # Parse command line arguments for quick options
-    if len(sys.argv) > 1:
-        if sys.argv[1] == "--help":
-            print("\nUsage: python arabic_transcriber.py [options]")
-            print("\nOptions:")
-            print("  --help          Show this help message")
-            print("\nWithout options, the program will start with interactive device selection")
-            sys.exit(0)
+    if len(sys.argv) > 1 and sys.argv[1] == "--help":
+        print("\nUsage: python main.py")
+        print("\nCommand-line mode (device selection in terminal).")
+        print("GUI mode is available via gui.py.")
+        sys.exit(0)
     
     try:
         # Check for saved device first

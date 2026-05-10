@@ -1,10 +1,10 @@
 baseURL = 'https://localarabic.com'
 languageCode = 'en-us'
-title = 'Arabic Desktop Audio Transcriber & Translator'
+title = 'Desktop Audio Translator'
 
 [params]
-  description = 'A powerful desktop application for real-time Arabic audio transcription and translation that works completely offline.'
-  author = 'Arabic Transcriber Team'
+  description = 'A desktop audio translator with offline Whisper speech recognition, Helsinki-NLP translation, and a simple GUI with language switching.'
+  author = 'Desktop Audio Translator'
   version = '1.0.0'
 
 [markup]

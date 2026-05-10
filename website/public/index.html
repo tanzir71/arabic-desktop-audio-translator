@@ -72,7 +72,7 @@
 <div class="hero">
     <div class="hero-container">
         <div class="hero-content">
-            <h1 class="hero-title">Arabic Desktop Audio Transcriber & Translator</h1>
+            <h1 class="hero-title">Desktop Audio Translator</h1>
             <p class="hero-subtitle">A powerful desktop application for real-time Arabic audio transcription and translation that works completely offline.</p>
             <div class="hero-buttons">
                 <a href="https://github.com/tanzir71/arabic-desktop-audio-translator" class="btn btn-primary" target="_blank">View on GitHub</a>
@@ -87,24 +87,24 @@
                         <span class="demo-dot yellow"></span>
                         <span class="demo-dot green"></span>
                     </div>
-                    <span class="demo-title">Arabic Transcriber</span>
+                    <span class="demo-title">Desktop Audio Translator</span>
                 </div>
                 <div class="demo-content">
                     <div class="demo-line">
-                        <span class="demo-prompt">🎤 Arabic:</span>
+                        <span class="demo-prompt">🎤 Source:</span>
                         <span class="demo-text arabic">مرحبا كيف حالك اليوم؟</span>
                     </div>
                     <div class="demo-line">
-                        <span class="demo-prompt">🔤 English:</span>
+                        <span class="demo-prompt">🔤 Target:</span>
                         <span class="demo-text">Hello, how are you today?</span>
                     </div>
                     <div class="demo-separator">─────────────────────────────</div>
                     <div class="demo-line">
-                        <span class="demo-prompt">🎤 Arabic:</span>
+                        <span class="demo-prompt">🎤 Source:</span>
                         <span class="demo-text arabic">أهلا وسهلا بك</span>
                     </div>
                     <div class="demo-line">
-                        <span class="demo-prompt">🔤 English:</span>
+                        <span class="demo-prompt">🔤 Target:</span>
                         <span class="demo-text">Welcome</span>
                     </div>
                 </div>
@@ -130,21 +130,21 @@
             <div class="feature-card">
                 <i class="ph-fill ph-translate feature-icon"></i>
                 <h3>Advanced Speech Recognition</h3>
-                <p>High-accuracy Arabic speech recognition with support for various dialects.</p>
+                <p>Offline speech recognition using Whisper models (runs locally after download).</p>
                 <ul>
-                    <li>Google Speech Recognition API</li>
-                    <li>Noise filtering</li>
-                    <li>Multiple Arabic dialects</li>
+                    <li>Offline Whisper ASR</li>
+                    <li>GPU acceleration (CUDA)</li>
+                    <li>Configurable model size</li>
                 </ul>
             </div>
             <div class="feature-card">
                 <i class="ph-fill ph-globe feature-icon"></i>
                 <h3>Instant Translation</h3>
-                <p>Real-time Arabic to English translation powered by advanced transformer models.</p>
+                <p>Translate from a selectable source language to a selectable target language.</p>
                 <ul>
                     <li>Helsinki-NLP models</li>
-                    <li>Context-aware translations</li>
-                    <li>High translation quality</li>
+                    <li>Download per language pair</li>
+                    <li>Offline after download</li>
                 </ul>
             </div>
             <div class="feature-card">
@@ -159,12 +159,12 @@
             </div>
             <div class="feature-card">
                 <i class="ph-fill ph-keyboard feature-icon"></i>
-                <h3>Keyboard Controls</h3>
-                <p>Convenient keyboard shortcuts for seamless operation during transcription.</p>
+                <h3>GUI + CLI</h3>
+                <p>Use the simple GUI for language selection, or the CLI for quick control.</p>
                 <ul>
-                    <li>Ctrl+D: Change device</li>
-                    <li>Ctrl+C: Stop transcription</li>
-                    <li>Enter: Quick device selection</li>
+                    <li>GUI: device + language picker</li>
+                    <li>GUI: download models button</li>
+                    <li>CLI: Ctrl+D / Ctrl+C shortcuts</li>
                 </ul>
             </div>
             <div class="feature-card">
@@ -199,7 +199,10 @@ cd arabic-desktop-audio-translator
 # Install dependencies
 pip install -r requirements.txt
 
-# Run the application
+# Run the GUI
+python gui.py
+
+# Or run CLI mode
 python main.py</code></pre>
                 </div>
             </div>
@@ -207,10 +210,10 @@ python main.py</code></pre>
                 <h3>System Requirements</h3>
                 <ul class="requirements-list">
                     <li><strong>Python:</strong> 3.8 or higher</li>
-                    <li><strong>OS:</strong> Windows, macOS, Linux</li>
+                    <li><strong>OS:</strong> Windows</li>
                     <li><strong>RAM:</strong> 4GB minimum (8GB recommended)</li>
                     <li><strong>Storage:</strong> 2GB free space for models</li>
-                    <li><strong>Internet:</strong> Required for first-time setup</li>
+                    <li><strong>Internet:</strong> Only required for first-time model downloads</li>
                 </ul>
             </div>
         </div>
